@@ -1,0 +1,84 @@
+echo "# SampleTokenizeGold" >> README.md
+git init
+git add README.md
+git commit -m "first commit"
+git branch -M main
+git remote add origin https://github.com/iantstaley/SampleTokenizeGold.git
+git push -u origin main
+pragma solidity ^0.8.0;
+
+import "@chainlink/contracts/src/v0.8/ChainlinkClient.sol";
+
+contract GoldToken is ChainlinkClient {
+    using Chainlink for Chainlink.Request;
+    
+    uint256 public totalSupply;
+    string public name;
+    string public symbol;
+    uint8 public decimals;
+    
+    address private oracle;
+    bytes32 private jobId;
+    uint256 private fee;
+    uint256 public goldPrice; // price in USD per ounce
+    
+    mapping(address => uint256) private balances;
+    mapping(address => mapping(address => uint256)) private allowances;
+    
+    constructor(address _oracle, string memory _jobId, uint256 _fee) {
+        name = "Gold Token";
+        symbol = "GLD";
+        decimals = 18;
+        oracle = _oracle;
+        jobId = bytes32(bytes(_jobId));
+        fee = _fee;
+        setChainlinkToken(0x514910771AF9Ca656af840dff83E8264EcF986CA);
+    }
+    
+    function requestGoldPrice() public returns (bytes32 requestId) {
+        Chainlink.Request memory request = buildChainlinkRequest(jobId, address(this), this.fulfillGoldPrice.selector);
+        request.add("get", "https://api.goldpriceapi.com/api/XAU/USD");
+        request.add("path", "price");
+        request.addInt("times", 100);
+        return sendChainlinkRequestTo(oracle, request, fee);
+    }
+    
+    function fulfillGoldPrice(bytes32 _requestId, uint256 _goldPrice) public recordChainlinkFulfillment(_requestId) {
+        goldPrice = _goldPrice;
+    }
+    
+    function balanceOf(address _account) public view returns (uint256) {
+        return balances[_account];
+    }
+    
+    function allowance(address _owner, address _spender) public view returns (uint256) {
+        return allowances[_owner][_spender];
+    }
+    
+    function approve(address _spender, uint256 _amount) public returns (bool) {
+        allowances[msg.sender][_spender] = _amount;
+        emit Approval(msg.sender, _spender, _amount);
+        return true;
+    }
+    
+    function transfer(address _recipient, uint256 _amount) public returns (bool) {
+        require(balances[msg.sender] >= _amount, "Insufficient balance");
+        balances[msg.sender] -= _amount;
+        balances[_recipient] += _amount;
+        emit Transfer(msg.sender, _recipient, _amount);
+        return true;
+    }
+    
+    function transferFrom(address _sender, address _recipient, uint256 _amount) public returns (bool) {
+        require(balances[_sender] >= _amount, "Insufficient balance");
+        require(allowances[_sender][msg.sender] >= _amount, "Insufficient allowance");
+        balances[_sender] -= _amount;
+        balances[_recipient] += _amount;
+        allowances[_sender][msg.sender] -= _amount;
+        emit Transfer(_sender, _recipient, _amount);
+        return true;
+    }
+    
+    event Transfer(address indexed _from, address indexed _to, uint256 _value);
+    event Approval(address indexed _owner, address indexed _spender, uint256 _value);
+}
